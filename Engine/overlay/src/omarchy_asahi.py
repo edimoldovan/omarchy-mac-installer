@@ -25,6 +25,7 @@ import osinstall
 import stub
 
 import omarchy_apple_aea
+import omarchy_centauri
 import omarchy_mesa
 import omarchy_mt7932
 import omarchy_mt7932_policy
@@ -702,6 +703,7 @@ def stub_installer(sysinfo, dutil, osinfo):
         required = getattr(installer, "required_neo_peripherals", [])
         _collect_neo_radios(installer, pkg, required="radio" in required)
         _collect_neo_touch_id(installer, pkg, required="touch-id" in required)
+        _collect_centauri(installer, pkg)
         if getattr(getattr(installer, "sysinfo", None), "device_class", "") == "j700ap":
             _validate_neo_firmware_package(pkg)
         return result
@@ -812,6 +814,20 @@ def _collect_neo_radios(installer, pkg, collect=None, policy=None, *, required=F
     for name, data in sorted(files.items()):
         pkg.add_file(name, asahi_firmware.core.FWFile(name, data))
     logging.info("MacBook Neo radio firmware: %d files", len(files))
+
+
+def _collect_centauri(installer, pkg, collect=omarchy_centauri.collect):
+    """Collect this Mac's N1 Wi-Fi and Bluetooth inputs, which omarchy-mac-boot stitches into the initramfs."""
+    device_class = getattr(getattr(installer, "sysinfo", None), "device_class", "")
+    try:
+        files = collect(device_class)
+    except (OSError, subprocess.CalledProcessError, omarchy_centauri.CentauriError) as error:
+        logging.warning("N1 firmware inputs unavailable; Wi-Fi and Bluetooth will not start: %s", error)
+        return
+    for name, data in sorted(files.items()):
+        pkg.add_file(name, asahi_firmware.core.FWFile(name, data))
+    if files:
+        logging.info("N1 firmware inputs: %d files", len(files))
 
 
 def _iboot_system_container(dutil):

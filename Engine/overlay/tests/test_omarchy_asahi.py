@@ -115,7 +115,9 @@ sys.path.insert(
 )
 
 import omarchy_apple_aea  # noqa: E402
+import omarchy_centauri  # noqa: E402
 from omarchy_asahi import (  # noqa: E402
+    _collect_centauri,
     _collect_neo_radios,
     _collect_neo_touch_id,
     STEP2_SCRIPT,
@@ -2587,6 +2589,35 @@ class NeoTouchIdCalibrationTests(unittest.TestCase):
         partitions = [{"Content": "Apple_APFS", "DeviceIdentifier": "disk0s1"}]
         with self.assertRaisesRegex(AsahiAdapterError, "does not start"):
             self.run_hook("j700ap", lambda device: self.fail("read"), partitions)
+
+
+
+class CentauriHookTests(unittest.TestCase):
+    def run_hook(self, collect):
+        package = SimpleNamespace(added=[])
+        package.add_file = lambda name, data: package.added.append((name, data))
+        installer = SimpleNamespace(sysinfo=SimpleNamespace(device_class="j714cap"))
+        firmware = SimpleNamespace(core=SimpleNamespace(FWFile=lambda name, data: ("FWFile", name, data)))
+        with patch("omarchy_asahi.asahi_firmware", firmware):
+            _collect_centauri(installer, package, collect=collect)
+        return package.added
+
+    def test_an_n1_mac_adds_its_inputs_by_name(self):
+        files = {"apple/centauri/ftab.bin": b"ftab", "apple/centauri/BWC3.img4": b"cal"}
+        seen = []
+        added = self.run_hook(lambda device: seen.append(device) or files)
+        self.assertEqual(seen, ["j714cap"])
+        self.assertEqual(added, [(name, ("FWFile", name, data)) for name, data in sorted(files.items())])
+
+    def test_a_mac_without_an_n1_adds_nothing(self):
+        self.assertEqual(self.run_hook(lambda device: {}), [])
+
+    def test_a_failed_collection_warns_and_adds_nothing(self):
+        def collect(device):
+            raise omarchy_centauri.CentauriError("expected one BWC3 factory file, found 0")
+        with self.assertLogs(level="WARNING") as logs:
+            self.assertEqual(self.run_hook(collect), [])
+        self.assertIn("Wi-Fi and Bluetooth will not start", logs.output[0])
 
 
 if __name__ == "__main__":
